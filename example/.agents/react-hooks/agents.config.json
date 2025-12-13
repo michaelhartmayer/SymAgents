@@ -1,0 +1,11 @@
+{
+    "include": [
+        "**/hooks/**"
+    ],
+    "exclude": [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/.git/**"
+    ],
+    "agentFile": "AGENTS.md"
+}

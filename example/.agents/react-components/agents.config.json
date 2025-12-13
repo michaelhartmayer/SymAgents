@@ -1,0 +1,12 @@
+{
+    "include": [
+        "**/components/[A-Z]*",
+        "**/components/**/[A-Z]*"
+    ],
+    "exclude": [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/.git/**"
+    ],
+    "agentFile": "AGENTS.md"
+}

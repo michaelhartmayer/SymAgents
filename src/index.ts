@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { AgentRunner } from './runner';
 import * as path from 'path';
 

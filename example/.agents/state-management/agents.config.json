@@ -1,0 +1,13 @@
+{
+    "include": [
+        "**/store/**",
+        "**/slices/**",
+        "**/context/**"
+    ],
+    "exclude": [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/.git/**"
+    ],
+    "agentFile": "AGENTS.md"
+}

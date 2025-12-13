@@ -1,0 +1,12 @@
+{
+    "include": [
+        "**/types/**",
+        "**/interfaces/**"
+    ],
+    "exclude": [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/.git/**"
+    ],
+    "agentFile": "AGENTS.md"
+}
