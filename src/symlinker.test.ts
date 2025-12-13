@@ -109,4 +109,72 @@ describe('SymLinker', () => {
             expect(fs.ensureSymlink).toHaveBeenCalled();
         });
     });
+    describe('conflict detection', () => {
+        let consoleWarnSpy: jest.SpyInstance;
+
+        beforeEach(() => {
+            consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+        });
+
+        afterEach(() => {
+            consoleWarnSpy.mockRestore();
+        });
+
+        it('should warn and skip if directory matches multiple configs', async () => {
+            // Use nested roots so both are valid parents of the target
+            // Config 1 root: /test/cwd
+            // Config 2 root: /test/cwd/src
+            // Target: /test/cwd/src/component
+
+            const config1 = {
+                include: ['**/*'],
+                rootDir: '/test/cwd',
+                agentFile: '/test/cwd/AGENTS.md'
+            };
+            const config2 = {
+                include: ['**/*'],
+                rootDir: '/test/cwd/src',
+                agentFile: '/test/cwd/src/AGENTS.md'
+            };
+
+            const dirPath = '/test/cwd/src/component';
+
+            // Mock successful first link
+            (fs.pathExists as unknown as jest.Mock).mockResolvedValue(false);
+
+            await symLinker.checkAndLink(dirPath, [config1, config2]);
+
+            // First link should happen
+            expect(fs.ensureSymlink).toHaveBeenCalledWith(
+                expect.any(String),
+                path.join(dirPath, 'AGENTS.md')
+            );
+
+            // Second link should NOT happen (conflict)
+            // ensureSymlink should be called exactly once (for the first config)
+            expect(fs.ensureSymlink).toHaveBeenCalledTimes(1);
+
+            // Warning should be logged
+            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('CONFLICT'));
+            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('/test/cwd')); // One of them
+            // The other might be /test/cwd/src or similar, checking for 'CONFLICT' is key
+        });
+
+        it('should allow same config to be processed again without warning', async () => {
+            const config1 = {
+                include: ['**/*'],
+                rootDir: '/test/cwd',
+                agentFile: '/test/cwd/AGENTS.md'
+            };
+            const dirPath = '/test/cwd/src/component';
+
+            (fs.pathExists as unknown as jest.Mock).mockResolvedValue(false);
+
+            // Run twice with same config object
+            await symLinker.checkAndLink(dirPath, [config1]);
+            await symLinker.checkAndLink(dirPath, [config1]);
+
+            expect(consoleWarnSpy).not.toHaveBeenCalled();
+        });
+    });
 });

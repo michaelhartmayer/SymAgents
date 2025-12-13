@@ -5,6 +5,7 @@ import { AgentConfig } from './types';
 
 export class SymLinker {
     private cwd: string;
+    private linkedDirs: Map<string, AgentConfig> = new Map();
 
     constructor(cwd: string) {
         this.cwd = cwd;
@@ -14,7 +15,7 @@ export class SymLinker {
         // dirPath is absolute
         for (const config of configs) {
             if (this.shouldLink(dirPath, config)) {
-                await this.createSymlink(dirPath, config.agentFile);
+                await this.createSymlink(dirPath, config);
             }
         }
     }
@@ -60,7 +61,24 @@ export class SymLinker {
         return false;
     }
 
-    private async createSymlink(targetDir: string, agentFile: string) {
+    private async createSymlink(targetDir: string, config: AgentConfig) {
+        const agentFile = config.agentFile;
+        // Check for conflicts
+        if (this.linkedDirs.has(targetDir)) {
+            const existingConfig = this.linkedDirs.get(targetDir)!;
+            // If it's a different config object (or same content but different root)
+            if (existingConfig !== config) {
+                console.warn(`[SymAgents] CONFLICT: Directory "${targetDir}" matches multiple configs.`);
+                console.warn(`  1. Pattern from: ${existingConfig.rootDir}`);
+                console.warn(`  2. Pattern from: ${config.rootDir}`);
+                console.warn(`  Skipping link for config #2 to avoid overwriting.`);
+                return;
+            }
+        }
+
+        // Register this link
+        this.linkedDirs.set(targetDir, config);
+
         const linkPath = path.join(targetDir, 'AGENTS.md');
 
         try {
@@ -111,6 +129,7 @@ export class SymLinker {
                 if (stats.isSymbolicLink()) {
                     await fs.unlink(linkPath);
                     console.log(`[SymAgents] Removed AGENTS.md in ${targetDir}`);
+                    this.linkedDirs.delete(targetDir);
                 }
             }
         } catch (err) {
