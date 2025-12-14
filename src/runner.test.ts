@@ -225,4 +225,21 @@ describe('AgentRunner', () => {
             expect(glob.glob).not.toHaveBeenCalled();
         });
     });
+
+    describe('removeSync (SIGINT-safe)', () => {
+        it('should call SymLinker.removeAllLinksSync for signal handler cleanup', () => {
+            // removeSync should exist and call the sync method on SymLinker
+            agentRunner.removeSync();
+
+            expect(mockSymLinker.removeAllLinksSync).toHaveBeenCalled();
+        });
+
+        it('should not use async methods in signal handlers', () => {
+            agentRunner.removeSync();
+
+            // Verify we DON'T call the async methods during signal handling
+            expect(mockSymLinker.removeAllLinks).not.toHaveBeenCalled();
+        });
+    });
 });
+

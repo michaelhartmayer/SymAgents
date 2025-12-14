@@ -266,4 +266,136 @@ describe('SymLinker', () => {
             expect(result2.status).toBe('fulfilled');
         });
     });
+
+    describe('removeLinkSync (SIGINT-safe)', () => {
+        it('should synchronously remove a symlink if it exists', () => {
+            const config = {
+                include: ['**/*'],
+                rootDir: cwd,
+                agentFile: '/test/cwd/AGENTS.md'
+            };
+            const dirPath = '/test/cwd/sub';
+
+            // First create a link via async (which tracks it)
+            (fs.pathExists as unknown as jest.Mock).mockResolvedValue(false);
+
+            // Mock sync operations
+            (fs.existsSync as unknown as jest.Mock).mockReturnValue(true);
+            (fs.lstatSync as unknown as jest.Mock).mockReturnValue({
+                isSymbolicLink: () => true
+            });
+
+            // Create link first (to populate linkedDirs)
+            symLinker.checkAndLink(dirPath, [config]).then(() => {
+                // Now test sync removal
+                symLinker.removeLinkSync(dirPath);
+
+                expect(fs.existsSync).toHaveBeenCalledWith(path.join(dirPath, 'AGENTS.md'));
+                expect(fs.unlinkSync).toHaveBeenCalledWith(path.join(dirPath, 'AGENTS.md'));
+            });
+        });
+
+        it('should handle non-existent files gracefully', () => {
+            const dirPath = '/test/cwd/nonexistent';
+
+            (fs.existsSync as unknown as jest.Mock).mockReturnValue(false);
+
+            // Should not throw
+            expect(() => symLinker.removeLinkSync(dirPath)).not.toThrow();
+            expect(fs.unlinkSync).not.toHaveBeenCalled();
+        });
+
+        it('should handle ENOENT errors gracefully (race condition)', () => {
+            const config = {
+                include: ['**/*'],
+                rootDir: cwd,
+                agentFile: '/test/cwd/AGENTS.md'
+            };
+            const dirPath = '/test/cwd/sub';
+
+            // File exists when checked
+            (fs.existsSync as unknown as jest.Mock).mockReturnValue(true);
+            (fs.lstatSync as unknown as jest.Mock).mockReturnValue({
+                isSymbolicLink: () => true
+            });
+
+            // But unlinkSync fails with ENOENT (race condition - another process removed it)
+            const enoentError = new Error('ENOENT: no such file or directory') as NodeJS.ErrnoException;
+            enoentError.code = 'ENOENT';
+            (fs.unlinkSync as unknown as jest.Mock).mockImplementation(() => {
+                throw enoentError;
+            });
+
+            // Should not throw
+            expect(() => symLinker.removeLinkSync(dirPath)).not.toThrow();
+        });
+
+        it('should not remove real files (only symlinks)', () => {
+            const dirPath = '/test/cwd/sub';
+
+            (fs.existsSync as unknown as jest.Mock).mockReturnValue(true);
+            (fs.lstatSync as unknown as jest.Mock).mockReturnValue({
+                isSymbolicLink: () => false // It's a real file
+            });
+
+            symLinker.removeLinkSync(dirPath);
+
+            expect(fs.unlinkSync).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('removeAllLinksSync (SIGINT-safe)', () => {
+        it('should synchronously remove all tracked symlinks', async () => {
+            const config = {
+                include: ['**/*'],
+                rootDir: cwd,
+                agentFile: '/test/cwd/AGENTS.md'
+            };
+            const dirPath1 = '/test/cwd/sub1';
+            const dirPath2 = '/test/cwd/sub2';
+
+            // Create some symlinks first (async, but we wait for them)
+            (fs.pathExists as unknown as jest.Mock).mockResolvedValue(false);
+            await symLinker.checkAndLink(dirPath1, [config]);
+            await symLinker.checkAndLink(dirPath2, [config]);
+
+            // Mock sync operations for removal
+            (fs.existsSync as unknown as jest.Mock).mockReturnValue(true);
+            (fs.lstatSync as unknown as jest.Mock).mockReturnValue({
+                isSymbolicLink: () => true
+            });
+
+            // Call sync removal
+            symLinker.removeAllLinksSync();
+
+            // Verify unlinkSync was called for both
+            expect(fs.unlinkSync).toHaveBeenCalledWith(path.join(dirPath1, 'AGENTS.md'));
+            expect(fs.unlinkSync).toHaveBeenCalledWith(path.join(dirPath2, 'AGENTS.md'));
+            expect(fs.unlinkSync).toHaveBeenCalledTimes(2);
+        });
+
+        it('should clear linkedDirs after removal', async () => {
+            const config = {
+                include: ['**/*'],
+                rootDir: cwd,
+                agentFile: '/test/cwd/AGENTS.md'
+            };
+            const dirPath = '/test/cwd/sub';
+
+            (fs.pathExists as unknown as jest.Mock).mockResolvedValue(false);
+            await symLinker.checkAndLink(dirPath, [config]);
+
+            expect(symLinker.hasLinks()).toBe(true);
+
+            (fs.existsSync as unknown as jest.Mock).mockReturnValue(true);
+            (fs.lstatSync as unknown as jest.Mock).mockReturnValue({
+                isSymbolicLink: () => true
+            });
+
+            symLinker.removeAllLinksSync();
+
+            expect(symLinker.hasLinks()).toBe(false);
+        });
+    });
 });
+

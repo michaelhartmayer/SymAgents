@@ -77,6 +77,15 @@ export class AgentRunner {
         Logger.success('[SymAgents] Done.');
     }
 
+    /**
+     * Synchronously removes all tracked symlinks.
+     * Used in signal handlers (SIGINT/SIGTERM) where async cleanup may not complete
+     * before the process exits.
+     */
+    removeSync(): void {
+        this.symLinker.removeAllLinksSync();
+    }
+
     private async applyAllLinks() {
         const uniqueDirs = new Set<string>();
 

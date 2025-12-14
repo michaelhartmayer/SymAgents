@@ -28,8 +28,8 @@ const run = async () => {
         // Flag to prevent duplicate cleanup execution
         let cleanupInProgress = false;
 
-        // Handle path cleanup on exit
-        const cleanup = async () => {
+        // Handle path cleanup on exit - MUST be synchronous to complete before process exit
+        const cleanup = () => {
             // Check if cleanup is already in progress
             if (cleanupInProgress) {
                 return;
@@ -42,7 +42,9 @@ const run = async () => {
 
             Logger.info('\n[SymAgents] Stopping and cleaning up...');
             try {
-                await runner.remove();
+                // Use SYNCHRONOUS cleanup to ensure it completes before process exits
+                runner.removeSync();
+                Logger.success('[SymAgents] Done.');
             } catch (e) {
                 Logger.error('[SymAgents] Error during cleanup:', e);
             }

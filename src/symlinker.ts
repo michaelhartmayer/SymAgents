@@ -179,4 +179,50 @@ export class SymLinker {
 
         this.linkedDirs.clear();
     }
+
+    /**
+     * Synchronously removes a symlink from the target directory.
+     * Used in signal handlers where async operations may not complete before process exit.
+     * @param targetDir - The directory containing the AGENTS.md symlink to remove
+     */
+    removeLinkSync(targetDir: string): void {
+        const linkPath = path.join(targetDir, 'AGENTS.md');
+        try {
+            if (!fs.existsSync(linkPath)) {
+                this.linkedDirs.delete(targetDir);
+                return;
+            }
+
+            const stats = fs.lstatSync(linkPath);
+            if (stats.isSymbolicLink()) {
+                fs.unlinkSync(linkPath);
+                Logger.action(`[SymAgents] Removed AGENTS.md in ${targetDir}`);
+            }
+            this.linkedDirs.delete(targetDir);
+        } catch (err: any) {
+            // Handle ENOENT gracefully - file was already removed (race condition)
+            if (err.code === 'ENOENT') {
+                this.linkedDirs.delete(targetDir);
+                return;
+            }
+            // Ignore other errors during emergency cleanup to ensure we try all files
+        }
+    }
+
+    /**
+     * Synchronously removes all tracked symlinks.
+     * Used in signal handlers (SIGINT/SIGTERM) where async operations may not complete
+     * before the process exits. Blocks the main thread until all symlinks are processed.
+     */
+    removeAllLinksSync(): void {
+        Logger.info('[SymAgents] Removing all symlinks...');
+        const dirs = Array.from(this.linkedDirs.keys());
+
+        for (const dir of dirs) {
+            this.removeLinkSync(dir);
+        }
+
+        this.linkedDirs.clear();
+    }
 }
+

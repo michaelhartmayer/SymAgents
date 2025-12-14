@@ -204,4 +204,38 @@ describe('SymAgents Integration Suite', () => {
             expect(await fs.readFile(targetPath, 'utf8')).toBe(customContent);
         });
     });
+    describe('Feature: Array Configuration Support', () => {
+        it('should support multiple configs in a single file', async () => {
+            await ctx.createFile('AGENTS_A.md', '# Agent A');
+            await ctx.createFile('AGENTS_B.md', '# Agent B');
+
+            // Array config
+            await ctx.createFile('agents.config.json', JSON.stringify([
+                {
+                    include: ['libs/**'],
+                    rootDir: ctx.tmpDir,
+                    agentFile: 'AGENTS_A.md'
+                },
+                {
+                    include: ['apps/**'],
+                    rootDir: ctx.tmpDir,
+                    agentFile: 'AGENTS_B.md'
+                }
+            ]));
+
+            await ctx.createDir('libs/utils');
+            await ctx.createDir('apps/frontend');
+
+            await ctx.runner.runOnce();
+
+            const linkA = ctx.getFullPath('libs/utils/AGENTS.md');
+            const linkB = ctx.getFullPath('apps/frontend/AGENTS.md');
+
+            expect(await fs.pathExists(linkA)).toBe(true);
+            expect(await fs.readlink(linkA)).toContain('AGENTS_A.md');
+
+            expect(await fs.pathExists(linkB)).toBe(true);
+            expect(await fs.readlink(linkB)).toContain('AGENTS_B.md');
+        });
+    });
 });
