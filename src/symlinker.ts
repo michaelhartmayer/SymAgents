@@ -2,6 +2,7 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import { minimatch } from 'minimatch';
 import { AgentConfig } from './types';
+import { Logger } from './logger';
 
 export class SymLinker {
     private cwd: string;
@@ -68,10 +69,10 @@ export class SymLinker {
             const existingConfig = this.linkedDirs.get(targetDir)!;
             // If it's a different config object (or same content but different root)
             if (existingConfig !== config) {
-                console.warn(`[SymAgents] CONFLICT: Directory "${targetDir}" matches multiple configs.`);
-                console.warn(`  1. Pattern from: ${existingConfig.rootDir}`);
-                console.warn(`  2. Pattern from: ${config.rootDir}`);
-                console.warn(`  Skipping link for config #2 to avoid overwriting.`);
+                Logger.warn(`[SymAgents] CONFLICT: Directory "${targetDir}" matches multiple configs.`);
+                Logger.warn(`  1. Pattern from: ${existingConfig.rootDir}`);
+                Logger.warn(`  2. Pattern from: ${config.rootDir}`);
+                Logger.warn(`  Skipping link for config #2 to avoid overwriting.`);
                 return;
             }
         }
@@ -106,7 +107,7 @@ export class SymLinker {
                     await fs.unlink(linkPath);
                 } else {
                     // It's a real file, don't touch
-                    // console.log(`[SymAgents] Skipping ${linkPath} as it is a real file.`);
+                    // Logger.info(`[SymAgents] Skipping ${linkPath} as it is a real file.`);
                     return;
                 }
             }
@@ -114,26 +115,55 @@ export class SymLinker {
             // Create relative symlink
             const relativeTarget = path.relative(targetDir, agentFile);
             await fs.ensureSymlink(relativeTarget, linkPath);
-            console.log(`[SymAgents] Linked AGENTS.md in ${targetDir}`);
+            Logger.action(`[SymAgents] Linked AGENTS.md in ${targetDir}`);
 
         } catch (err) {
-            console.error(`[SymAgents] Error creating symlink at ${linkPath}:`, err);
+            Logger.error(`[SymAgents] Error creating symlink at ${linkPath}:`, err);
         }
     }
 
     async removeLink(targetDir: string) {
         const linkPath = path.join(targetDir, 'AGENTS.md');
         try {
-            if (await fs.pathExists(linkPath)) {
-                const stats = await fs.lstat(linkPath);
-                if (stats.isSymbolicLink()) {
-                    await fs.unlink(linkPath);
-                    console.log(`[SymAgents] Removed AGENTS.md in ${targetDir}`);
-                    this.linkedDirs.delete(targetDir);
-                }
+            // Check if file exists before attempting operations
+            if (!(await fs.pathExists(linkPath))) {
+                // File doesn't exist, nothing to remove
+                this.linkedDirs.delete(targetDir);
+                return;
             }
-        } catch (err) {
-            console.error(`[SymAgents] Error removing link at ${linkPath}:`, err);
+
+            const stats = await fs.lstat(linkPath);
+            if (stats.isSymbolicLink()) {
+                await fs.unlink(linkPath);
+                Logger.action(`[SymAgents] Removed AGENTS.md in ${targetDir}`);
+                this.linkedDirs.delete(targetDir);
+            }
+        } catch (err: any) {
+            // Handle ENOENT gracefully - file was already removed (race condition)
+            if (err.code === 'ENOENT') {
+                this.linkedDirs.delete(targetDir);
+                return;
+            }
+            Logger.error(`[SymAgents] Error removing link at ${linkPath}:`, err);
         }
+    }
+
+    async removeAllLinks() {
+        Logger.info('[SymAgents] Removing all symlinks...');
+        const dirs = Array.from(this.linkedDirs.keys());
+
+        // Use Promise.allSettled to handle all removals even if some fail
+        const results = await Promise.allSettled(
+            dirs.map(dir => this.removeLink(dir))
+        );
+
+        // Log any unexpected failures (ENOENT is handled gracefully in removeLink)
+        results.forEach((result, index) => {
+            if (result.status === 'rejected') {
+                Logger.error(`[SymAgents] Unexpected error removing link in ${dirs[index]}:`, result.reason);
+            }
+        });
+
+        this.linkedDirs.clear();
     }
 }

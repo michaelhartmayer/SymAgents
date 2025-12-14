@@ -177,4 +177,99 @@ describe('SymLinker', () => {
             expect(consoleWarnSpy).not.toHaveBeenCalled();
         });
     });
+
+    describe('removeAllLinks', () => {
+        it('should remove all tracked symlinks', async () => {
+            const config = {
+                include: ['**/*'],
+                rootDir: cwd,
+                agentFile: '/test/cwd/AGENTS.md'
+            };
+            const dirPath1 = '/test/cwd/sub1';
+            const dirPath2 = '/test/cwd/sub2';
+
+            // Create some symlinks first
+            (fs.pathExists as unknown as jest.Mock).mockResolvedValue(false);
+            await symLinker.checkAndLink(dirPath1, [config]);
+            await symLinker.checkAndLink(dirPath2, [config]);
+
+            // Now remove all links
+            (fs.pathExists as unknown as jest.Mock).mockResolvedValue(true);
+            (fs.lstat as unknown as jest.Mock).mockResolvedValue({
+                isSymbolicLink: () => true
+            });
+
+            await symLinker.removeAllLinks();
+
+            // Verify unlink was called for both symlinks
+            expect(fs.unlink).toHaveBeenCalledWith(path.join(dirPath1, 'AGENTS.md'));
+            expect(fs.unlink).toHaveBeenCalledWith(path.join(dirPath2, 'AGENTS.md'));
+            expect(fs.unlink).toHaveBeenCalledTimes(2);
+        });
+
+        it('should handle removing already-removed symlinks gracefully (no ENOENT errors)', async () => {
+            const config = {
+                include: ['**/*'],
+                rootDir: cwd,
+                agentFile: '/test/cwd/AGENTS.md'
+            };
+            const dirPath1 = '/test/cwd/sub1';
+            const dirPath2 = '/test/cwd/sub2';
+
+            // Create some symlinks first
+            (fs.pathExists as unknown as jest.Mock).mockResolvedValue(false);
+            await symLinker.checkAndLink(dirPath1, [config]);
+            await symLinker.checkAndLink(dirPath2, [config]);
+
+            // Simulate the bug: pathExists says true, lstat says it's a symlink, but unlink fails with ENOENT
+            // This happens when two cleanup processes race - first removes file, second tries to remove already-removed file
+            (fs.pathExists as unknown as jest.Mock).mockResolvedValue(true);
+            (fs.lstat as unknown as jest.Mock).mockResolvedValue({
+                isSymbolicLink: () => true
+            });
+
+            // Mock unlink to throw ENOENT error (simulating file was removed between pathExists check and unlink call)
+            const enoentError = new Error('ENOENT: no such file or directory') as NodeJS.ErrnoException;
+            enoentError.code = 'ENOENT';
+            (fs.unlink as unknown as jest.Mock).mockRejectedValue(enoentError);
+
+            // This should NOT throw an error even though unlink fails with ENOENT
+            await expect(symLinker.removeAllLinks()).resolves.not.toThrow();
+        });
+
+
+        it('should handle concurrent cleanup (duplicate calls) without errors', async () => {
+            const config = {
+                include: ['**/*'],
+                rootDir: cwd,
+                agentFile: '/test/cwd/AGENTS.md'
+            };
+            const dirPath = '/test/cwd/sub1';
+
+            // Create a symlink
+            (fs.pathExists as unknown as jest.Mock).mockResolvedValue(false);
+            await symLinker.checkAndLink(dirPath, [config]);
+
+            // First call: file exists and is removed
+            let callCount = 0;
+            (fs.pathExists as unknown as jest.Mock).mockImplementation(async () => {
+                callCount++;
+                // First call returns true, second returns false (already removed)
+                return callCount === 1;
+            });
+            (fs.lstat as unknown as jest.Mock).mockResolvedValue({
+                isSymbolicLink: () => true
+            });
+
+            // Call removeAllLinks twice in parallel (simulating duplicate signal handling)
+            const [result1, result2] = await Promise.allSettled([
+                symLinker.removeAllLinks(),
+                symLinker.removeAllLinks()
+            ]);
+
+            // Both calls should succeed without errors
+            expect(result1.status).toBe('fulfilled');
+            expect(result2.status).toBe('fulfilled');
+        });
+    });
 });

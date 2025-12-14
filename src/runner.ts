@@ -5,12 +5,14 @@ import * as fs from 'fs-extra';
 import { ConfigLoader } from './config';
 import { SymLinker } from './symlinker';
 import { AgentConfig } from './types';
+import { Logger } from './logger';
 
 export class AgentRunner {
     private cwd: string;
     private configLoader: ConfigLoader;
     private symLinker: SymLinker;
     private configs: AgentConfig[] = [];
+    private isRefreshing: boolean = false;
 
     constructor(cwd: string) {
         this.cwd = cwd;
@@ -19,11 +21,11 @@ export class AgentRunner {
     }
 
     async watch() {
-        console.log('[SymAgents] Starting watcher...');
+        Logger.info('[SymAgents] Starting watcher...');
         await this.reloadConfigs();
 
         const watcher = chokidar.watch(this.cwd, {
-            ignored: /(^|[\/\\])\..|node_modules/,
+            ignored: /(^|[\/\\])\.\.|node_modules/,
             persistent: true,
             ignoreInitial: false,
             depth: 99
@@ -35,21 +37,21 @@ export class AgentRunner {
             .on('change', (path) => this.onFileChange(path))
             .on('unlink', (path) => this.onFileUnlink(path));
 
-        console.log('[SymAgents] Watching for changes...');
+        Logger.success('[SymAgents] Watching for changes...');
     }
 
     async runOnce() {
-        console.log('[SymAgents] Running once...');
+        Logger.info('[SymAgents] Running once...');
         await this.reloadConfigs();
         await this.processAll('link');
-        console.log('[SymAgents] Done.');
+        Logger.success('[SymAgents] Done.');
     }
 
     async remove() {
-        console.log('[SymAgents] Removing symlinks...');
+        Logger.info('[SymAgents] Removing symlinks...');
         await this.reloadConfigs();
         await this.processAll('remove');
-        console.log('[SymAgents] Done.');
+        Logger.success('[SymAgents] Done.');
     }
 
     private async processAll(action: 'link' | 'remove') {
@@ -76,36 +78,73 @@ export class AgentRunner {
                         }
                     }
                 } catch (err) {
-                    console.error(`[SymAgents] Error processing pattern ${pattern} in ${config.rootDir}:`, err);
+                    Logger.error(`[SymAgents] Error processing pattern ${pattern} in ${config.rootDir}:`, err);
                 }
             }
         }
     }
 
     private async reloadConfigs() {
-        console.log('[SymAgents] Loading configurations...');
+        Logger.info('[SymAgents] Loading configurations...');
         this.configs = await this.configLoader.loadConfigs();
-        console.log(`[SymAgents] Loaded ${this.configs.length} configs.`);
+        Logger.success(`[SymAgents] Loaded ${this.configs.length} configs.`);
+    }
+
+    private async refreshAllSymlinks() {
+        if (this.isRefreshing) {
+            return; // Avoid recursive refresh
+        }
+
+        this.isRefreshing = true;
+        try {
+            Logger.info('[SymAgents] .agents directory changed, refreshing all symlinks...');
+
+            // Remove all existing symlinks
+            await this.symLinker.removeAllLinks();
+
+            // Reload configs
+            await this.reloadConfigs();
+
+            // Reapply all symlinks
+            await this.processAll('link');
+
+            Logger.success('[SymAgents] Symlinks refreshed.');
+        } finally {
+            this.isRefreshing = false;
+        }
     }
 
     private async onDirAdd(dirPath: string) {
+        if (this.isRefreshing) return;
         await this.symLinker.checkAndLink(dirPath, this.configs);
     }
 
     private async onFileAdd(filePath: string) {
-        if (this.isConfigFile(filePath)) {
+        if (this.isRefreshing) return;
+
+        if (this.isAgentsFile(filePath)) {
+            await this.refreshAllSymlinks();
+        } else if (this.isConfigFile(filePath)) {
             await this.reloadConfigs();
         }
     }
 
     private async onFileChange(filePath: string) {
-        if (this.isConfigFile(filePath)) {
+        if (this.isRefreshing) return;
+
+        if (this.isAgentsFile(filePath)) {
+            await this.refreshAllSymlinks();
+        } else if (this.isConfigFile(filePath)) {
             await this.reloadConfigs();
         }
     }
 
     private async onFileUnlink(filePath: string) {
-        if (this.isConfigFile(filePath)) {
+        if (this.isRefreshing) return;
+
+        if (this.isAgentsFile(filePath)) {
+            await this.refreshAllSymlinks();
+        } else if (this.isConfigFile(filePath)) {
             await this.reloadConfigs();
         }
     }
@@ -113,5 +152,10 @@ export class AgentRunner {
     private isConfigFile(filePath: string): boolean {
         const filename = path.basename(filePath);
         return filename.startsWith('agents.config.');
+    }
+
+    private isAgentsFile(filePath: string): boolean {
+        const relativePath = path.relative(this.cwd, filePath);
+        return relativePath.startsWith('.agents' + path.sep) || relativePath === '.agents';
     }
 }

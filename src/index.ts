@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { AgentRunner } from './runner';
 import * as path from 'path';
+import { Logger } from './logger';
 
 // Get CWD from args or process.env.INIT_CWD or process.cwd()
 const args = process.argv.slice(2);
@@ -13,7 +14,7 @@ const pathArgs = args.filter(arg => !arg.startsWith('--'));
 
 let rootDir = pathArgs[0] ? path.resolve(process.cwd(), pathArgs[0]) : (process.env.INIT_CWD || process.cwd());
 
-console.log(`[SymAgents] Using root directory: ${rootDir}`);
+Logger.info(`[SymAgents] Using root directory: ${rootDir}`);
 const runner = new AgentRunner(rootDir);
 
 const run = async () => {
@@ -24,13 +25,26 @@ const run = async () => {
     } else {
         await runner.watch();
 
+        // Flag to prevent duplicate cleanup execution
+        let cleanupInProgress = false;
+
         // Handle path cleanup on exit
         const cleanup = async () => {
-            console.log('\n[SymAgents] Stopping and cleaning up...');
+            // Check if cleanup is already in progress
+            if (cleanupInProgress) {
+                return;
+            }
+            cleanupInProgress = true;
+
+            // De-register signal handlers to prevent duplicate calls
+            process.off('SIGINT', cleanup);
+            process.off('SIGTERM', cleanup);
+
+            Logger.info('\n[SymAgents] Stopping and cleaning up...');
             try {
                 await runner.remove();
             } catch (e) {
-                console.error('[SymAgents] Error during cleanup:', e);
+                Logger.error('[SymAgents] Error during cleanup:', e);
             }
             process.exit(0);
         };
@@ -41,6 +55,6 @@ const run = async () => {
 };
 
 run().catch(err => {
-    console.error('[SymAgents] Fatal error:', err);
+    Logger.error('[SymAgents] Fatal error:', err);
     process.exit(1);
 });

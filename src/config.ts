@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as glob from 'glob';
 import * as yaml from 'js-yaml';
 import { AgentConfig } from './types';
+import { Logger } from './logger';
 
 export class ConfigLoader {
     private cwd: string;
@@ -68,11 +69,11 @@ export class ConfigLoader {
                         agentFile: configContent.agentFile ? path.resolve(configDir, configContent.agentFile) : agentFile
                     });
                 } else {
-                    console.warn(`[SymAgents] AGENTS.md not found for config at ${configPath}`);
+                    Logger.warn(`[SymAgents] AGENTS.md not found for config at ${configPath}`);
                 }
             }
         } catch (err) {
-            console.error(`[SymAgents] Error reading config at ${configPath}:`, err);
+            Logger.error(`[SymAgents] Error reading config at ${configPath}:`, err);
         }
     }
 
@@ -89,7 +90,7 @@ export class ConfigLoader {
             try {
                 return require(filePath);
             } catch (e) {
-                console.error(`[SymAgents] Could not require .js config: ${filePath}`, e);
+                Logger.error(`[SymAgents] Could not require .js config: ${filePath}`, e);
                 return null;
             }
         }
