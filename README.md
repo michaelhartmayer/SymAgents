@@ -31,6 +31,15 @@ Create a `agents.config.json` (or `.js`, `.yml`) in your project root, `.agents/
   ],
   "agentFile": "./AGENTS.md"
 }
+
+
+You can also provide an **array of configurations** if you need multiple rules in a single file:
+
+```json
+[
+  { "include": ["src/components/**"], "agentFile": "AGENTS_COMPONENTS.md" },
+  { "include": ["src/hooks/**"], "agentFile": "AGENTS_HOOKS.md" }
+]
 ```
 
 - `include`: Array of glob patterns to match directories where `AGENTS.md` should be linked.
@@ -114,3 +123,16 @@ If a new directory matches patterns from **multiple** configuration files, SymAg
 3. **Skip creating any symlinks** for that directory to prevent ambiguity or accidental overwrites.
 
 To resolve this, ensure your `include` and `exclude` patterns are specific enough that each target directory matches only one configuration.
+
+## Safety & Troubleshooting
+
+### File Preservation
+SymAgents will **never** overwrite or remove an existing `AGENTS.md` file if it is a real file (not a symlink). If you have a folder that needs a custom, manual `AGENTS.md`, simply create it there, and the tool will respect it.
+
+### Debugging
+If you are running into issues or want to see exactly what the tool is doing, you can enable verbose logging:
+
+```bash
+DEBUG=true npx sym-agents
+```
+
