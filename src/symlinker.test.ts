@@ -144,20 +144,14 @@ describe('SymLinker', () => {
 
             await symLinker.checkAndLink(dirPath, [config1, config2]);
 
-            // First link should happen
-            expect(fs.ensureSymlink).toHaveBeenCalledWith(
-                expect.any(String),
-                path.join(dirPath, 'AGENTS.md')
-            );
+            // NO link should happen (conflict detected upfront)
+            expect(fs.ensureSymlink).not.toHaveBeenCalled();
 
-            // Second link should NOT happen (conflict)
-            // ensureSymlink should be called exactly once (for the first config)
-            expect(fs.ensureSymlink).toHaveBeenCalledTimes(1);
-
-            // Warning should be logged
+            // Warning should be logged about the conflict
             expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('CONFLICT'));
-            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('/test/cwd')); // One of them
-            // The other might be /test/cwd/src or similar, checking for 'CONFLICT' is key
+            // Should mention both patterns/roots
+            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('/test/cwd'));
+            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('/test/cwd/src'));
         });
 
         it('should allow same config to be processed again without warning', async () => {

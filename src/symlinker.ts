@@ -12,13 +12,35 @@ export class SymLinker {
         this.cwd = cwd;
     }
 
+    hasLinks(): boolean {
+        return this.linkedDirs.size > 0;
+    }
+
     async checkAndLink(dirPath: string, configs: AgentConfig[]) {
-        // dirPath is absolute
+        // Find all configs that match this directory
+        const matchingConfigs: AgentConfig[] = [];
+
         for (const config of configs) {
             if (this.shouldLink(dirPath, config)) {
-                await this.createSymlink(dirPath, config);
+                matchingConfigs.push(config);
             }
         }
+
+        if (matchingConfigs.length === 0) {
+            return;
+        }
+
+        if (matchingConfigs.length > 1) {
+            Logger.warn(`[SymAgents] CONFLICT: Directory "${dirPath}" matches multiple configs.`);
+            matchingConfigs.forEach((config, index) => {
+                Logger.warn(`  ${index + 1}. Pattern from: ${config.rootDir}`);
+            });
+            Logger.warn(`  Skipping all links to avoid ambiguity/overwriting.`);
+            return;
+        }
+
+        // Exact one match
+        await this.createSymlink(dirPath, matchingConfigs[0]);
     }
 
     private shouldLink(dirPath: string, config: AgentConfig): boolean {
@@ -64,18 +86,6 @@ export class SymLinker {
 
     private async createSymlink(targetDir: string, config: AgentConfig) {
         const agentFile = config.agentFile;
-        // Check for conflicts
-        if (this.linkedDirs.has(targetDir)) {
-            const existingConfig = this.linkedDirs.get(targetDir)!;
-            // If it's a different config object (or same content but different root)
-            if (existingConfig !== config) {
-                Logger.warn(`[SymAgents] CONFLICT: Directory "${targetDir}" matches multiple configs.`);
-                Logger.warn(`  1. Pattern from: ${existingConfig.rootDir}`);
-                Logger.warn(`  2. Pattern from: ${config.rootDir}`);
-                Logger.warn(`  Skipping link for config #2 to avoid overwriting.`);
-                return;
-            }
-        }
 
         // Register this link
         this.linkedDirs.set(targetDir, config);

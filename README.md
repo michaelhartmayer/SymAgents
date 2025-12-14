@@ -105,3 +105,12 @@ You can add it to your `package.json` scripts:
   }
 }
 ```
+
+## Conflict Resolution
+
+If a new directory matches patterns from **multiple** configuration files, SymAgents will:
+1. Detect the conflict.
+2. Log a warning listing all matching configurations.
+3. **Skip creating any symlinks** for that directory to prevent ambiguity or accidental overwrites.
+
+To resolve this, ensure your `include` and `exclude` patterns are specific enough that each target directory matches only one configuration.

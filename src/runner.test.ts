@@ -122,4 +122,67 @@ describe('AgentRunner', () => {
             expect(mockSymLinker.checkAndLink).toHaveBeenCalled();
         });
     });
+
+    describe('remove', () => {
+        it('should use SymLinker.removeAllLinks for robust cleanup (watcher mode)', async () => {
+            (mockSymLinker.hasLinks as unknown as jest.Mock).mockReturnValue(true);
+
+            await agentRunner.remove();
+
+            // Should verify we prefer tracking state over re-globbing
+            expect(mockSymLinker.removeAllLinks).toHaveBeenCalled();
+            // Should NOT rely on globbing for cleanup as configs might have changed/vanished
+            expect(glob.glob).not.toHaveBeenCalled();
+        });
+
+        it('should fallback to forced removal if no links tracked (CLI --remove)', async () => {
+            (mockSymLinker.hasLinks as unknown as jest.Mock).mockReturnValue(false);
+            mockConfigLoader.loadConfigs.mockResolvedValue([]);
+
+            await agentRunner.remove();
+
+            expect(mockSymLinker.removeAllLinks).not.toHaveBeenCalled();
+            // It calls forceRemoveAll which calls glob (if there were configs)
+            // Here configs is empty, so glob not called. 
+            // Better to mock configs to ensure glob is called.
+            expect(mockConfigLoader.loadConfigs).toHaveBeenCalled();
+        });
+    });
+
+    describe('conflict handling in runOnce', () => {
+        it('should pass ALL matching configs to checkAndLink to enable conflict detection', async () => {
+            const mockConfigs = [
+                {
+                    include: ['**/*'],
+                    exclude: [],
+                    rootDir: cwd,
+                    agentFile: '/test/cwd/AGENTS.md'
+                },
+                {
+                    include: ['**/*'],
+                    exclude: [],
+                    rootDir: cwd,
+                    agentFile: '/test/cwd/other/AGENTS.md'
+                }
+            ];
+            mockConfigLoader.loadConfigs.mockResolvedValue(mockConfigs);
+
+            const mockMatches = ['/test/cwd/subdir'];
+            (glob.glob as unknown as jest.Mock).mockResolvedValue(mockMatches);
+
+            (fs.lstat as unknown as jest.Mock).mockResolvedValue({
+                isDirectory: () => true
+            });
+
+            await agentRunner.runOnce();
+
+            // Should call checkAndLink ONCE for the directory, passing BOTH configs
+            // This is crucial for SymLinker to detect the conflict
+            expect(mockSymLinker.checkAndLink).toHaveBeenCalledWith(
+                mockMatches[0],
+                expect.arrayContaining([mockConfigs[0], mockConfigs[1]])
+            );
+            expect(mockSymLinker.checkAndLink).toHaveBeenCalledTimes(1);
+        });
+    });
 });
