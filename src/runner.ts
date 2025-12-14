@@ -12,6 +12,7 @@ export class AgentRunner {
     private configLoader: ConfigLoader;
     private symLinker: SymLinker;
     private configs: AgentConfig[] = [];
+    private watcher: chokidar.FSWatcher | null = null;
     private isRefreshing: boolean = false;
 
     constructor(cwd: string) {
@@ -21,23 +22,37 @@ export class AgentRunner {
     }
 
     async watch() {
+        if (this.watcher) {
+            Logger.info('[SymAgents] Watcher already running.');
+            return;
+        }
+
         Logger.info('[SymAgents] Starting watcher...');
         await this.reloadConfigs();
 
-        const watcher = chokidar.watch(this.cwd, {
+        this.watcher = chokidar.watch(this.cwd, {
             ignored: /(^|[\/\\])\.\.|node_modules/,
             persistent: true,
             ignoreInitial: false,
             depth: 99
         });
 
-        watcher
+        this.watcher
             .on('addDir', (path) => this.onDirAdd(path))
             .on('add', (path) => this.onFileAdd(path))
             .on('change', (path) => this.onFileChange(path))
             .on('unlink', (path) => this.onFileUnlink(path));
 
         Logger.success('[SymAgents] Watching for changes...');
+    }
+
+    async stop() {
+        if (this.watcher) {
+            await this.watcher.close();
+            this.watcher = null;
+            Logger.info('[SymAgents] Watcher stopped.');
+        }
+        await this.remove();
     }
 
     async runOnce() {
@@ -48,54 +63,13 @@ export class AgentRunner {
     }
 
     async remove() {
-        Logger.info('[SymAgents] Removing symlinks...');
-        // We don't need to reload configs to remove. We rely on what SymLinker tracks.
-        // But if this is a fresh run (CLI --remove), tracking map is empty.
-        // Wait, if it's CLI --remove, we have no memory.
-        // So we MUST reload configs and find what matches to remove it?
-        // OR we just assume removeAllLinks only works for active watcher?
+        Logger.info(`[SymAgents] Removing symlinks... (Tracking ${this.symLinker.hasLinks() ? 'ACTIVE' : 'INACTIVE'})`);
 
-        // If CLI --remove is used:
-        // "npx sym-agents --remove" -> runner starts fresh.
-        // symLinker.linkedDirs is empty.
-        // removeAllLinks does nothing.
-
-        // So for "CLI remove", we DO need to find files.
-        // But the bug report was "stopping the watcher".
-        // When watcher is running, linkedDirs IS populated.
-
-        // So we need dual strategy?
-        // 1. If we have tracked links, remove them using removeAllLinks
-        // 2. If we are starting fresh (and want to clean up potential stale links?), we usually scan.
-        // But "removeAllLinks" fails if we don't know them.
-
-        // Let's look at `index.ts`:
-        // const run = async () => { if (remove) await runner.remove(); ... }
-        // This is fresh start.
-
-        // But cleanup() in index.ts:
-        // const cleanup = async () => { ... await runner.remove(); ... }
-        // This uses the SAME runner instance (populated).
-
-        // So:
         if (this.symLinker.hasLinks()) {
-            // We have memory (watcher case)
+            Logger.debug(`[SymAgents] Removing tracked links via removeAllLinks...`);
             await this.symLinker.removeAllLinks();
         } else {
-            // We have no memory (CLI --remove case), we must scan.
-            // But scanning requires GLOB.
-            // And scanning logic was what we had before (processAll('remove')).
-            // But processAll('remove') calls removeLink, which relies on tracking map?
-            // No, removeLink implementation:
-            // if (!pathExists) ...
-            // if (isSymlink) unlink.
-            // It does NOT require it to be in the map (unless it checks?).
-            // symlinker.ts: removeLink(targetDir) -> check path, unlink if symlink.
-            // It deletes from map, but doesn't require it to be there to unlink.
-
-            // So for CLI --remove, we need to scan.
-            // For Watcher Cleanup, we prefer removeAllLinks (from map).
-
+            Logger.debug('[SymAgents] No tracked links found, falling back to full scan removal...');
             await this.reloadConfigs();
             await this.forceRemoveAll();
         }

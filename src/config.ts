@@ -57,19 +57,25 @@ export class ConfigLoader {
         const configDir = path.dirname(configPath);
         try {
             const configContent = await this.readConfig(configPath);
-            if (configContent) {
-                // AGENTS.md is sibling to the config file
-                const agentFile = path.join(configDir, 'AGENTS.md');
+            if (!configContent) return;
 
-                if (await fs.pathExists(configContent.agentFile ? path.resolve(configDir, configContent.agentFile) : agentFile)) {
+            const configItems = Array.isArray(configContent) ? configContent : [configContent];
+
+            for (const item of configItems) {
+                // AGENTS.md is sibling to the config file (default)
+                const defaultAgentFile = path.join(configDir, 'AGENTS.md');
+                // Resolve configured agentFile relative to configDir, or use default
+                const resolvedAgentFile = item.agentFile ? path.resolve(configDir, item.agentFile) : defaultAgentFile;
+
+                if (await fs.pathExists(resolvedAgentFile)) {
                     configs.push({
-                        include: configContent.include,
-                        exclude: configContent.exclude,
+                        include: item.include,
+                        exclude: item.exclude,
                         rootDir: rootDir,
-                        agentFile: configContent.agentFile ? path.resolve(configDir, configContent.agentFile) : agentFile
+                        agentFile: resolvedAgentFile
                     });
                 } else {
-                    Logger.warn(`[SymAgents] AGENTS.md not found for config at ${configPath}`);
+                    Logger.warn(`[SymAgents] AGENTS.md not found for config at ${configPath} (looking for ${resolvedAgentFile})`);
                 }
             }
         } catch (err) {

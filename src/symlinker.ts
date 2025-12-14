@@ -89,6 +89,7 @@ export class SymLinker {
 
         // Register this link
         this.linkedDirs.set(targetDir, config);
+        Logger.debug(`[SymAgents] Tracked link for: ${targetDir} (Total: ${this.linkedDirs.size})`);
 
         const linkPath = path.join(targetDir, 'AGENTS.md');
 
@@ -139,6 +140,7 @@ export class SymLinker {
             if (!(await fs.pathExists(linkPath))) {
                 // File doesn't exist, nothing to remove
                 this.linkedDirs.delete(targetDir);
+                Logger.debug(`[SymAgents] Untracked (missing file): ${targetDir}`);
                 return;
             }
 
@@ -147,6 +149,7 @@ export class SymLinker {
                 await fs.unlink(linkPath);
                 Logger.action(`[SymAgents] Removed AGENTS.md in ${targetDir}`);
                 this.linkedDirs.delete(targetDir);
+                Logger.debug(`[SymAgents] Untracked (removed): ${targetDir} (Remaining: ${this.linkedDirs.size})`);
             }
         } catch (err: any) {
             // Handle ENOENT gracefully - file was already removed (race condition)

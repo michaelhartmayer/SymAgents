@@ -185,4 +185,44 @@ describe('AgentRunner', () => {
             expect(mockSymLinker.checkAndLink).toHaveBeenCalledTimes(1);
         });
     });
+    describe('integration: watch -> remove', () => {
+        it('should properly track and remove links when stopped', async () => {
+            // Setup robust mocks simulating real behavior
+            // We need SymLinker.checkAndLink to ACTUALLY set the hasLinks state in our mock
+            // Since SymLinker is mocked, we need to implement the verification logic in the mock
+
+            let linksTracked = false;
+            (mockSymLinker.checkAndLink as unknown as jest.Mock).mockImplementation(async () => {
+                linksTracked = true;
+            });
+
+            (mockSymLinker.hasLinks as unknown as jest.Mock).mockImplementation(() => linksTracked);
+
+            // Setup config and watcher
+            mockConfigLoader.loadConfigs.mockResolvedValue([
+                { include: ['**/*'], exclude: [], rootDir: cwd, agentFile: 'AGENTS.md' }
+            ]);
+
+            const mockWatcher = { on: jest.fn().mockReturnThis() };
+            (chokidar.watch as jest.Mock).mockReturnValue(mockWatcher);
+
+            // 1. Start Watch
+            await agentRunner.watch();
+
+            // 2. Simulate finding a directory (chokidar 'addDir')
+            const addDirHandler = mockWatcher.on.mock.calls.find(call => call[0] === 'addDir')![1];
+            await addDirHandler('/test/cwd/subdir');
+
+            // Verify checkAndLink was called and state updated
+            expect(mockSymLinker.checkAndLink).toHaveBeenCalled();
+            expect(mockSymLinker.hasLinks()).toBe(true);
+
+            // 3. Stop/Remove
+            await agentRunner.remove();
+
+            // Verify it used the robust removal path
+            expect(mockSymLinker.removeAllLinks).toHaveBeenCalled();
+            expect(glob.glob).not.toHaveBeenCalled();
+        });
+    });
 });

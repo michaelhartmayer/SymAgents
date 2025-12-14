@@ -41,4 +41,13 @@ export class Logger {
     static action(message: string): void {
         console.log(chalk.blue(message));
     }
+
+    /**
+     * Log debug message (gray)
+     */
+    static debug(message: string): void {
+        if (process.env.DEBUG || process.env.VERBOSE) {
+            console.log(chalk.gray(message));
+        }
+    }
 }
