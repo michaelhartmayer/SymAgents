@@ -129,6 +129,10 @@ To resolve this, ensure your `include` and `exclude` patterns are specific enoug
 ### File Preservation
 SymAgents will **never** overwrite or remove an existing `AGENTS.md` file if it is a real file (not a symlink). If you have a folder that needs a custom, manual `AGENTS.md`, simply create it there, and the tool will respect it.
 
+### Signal Handling (Ctrl+C Cleanup)
+
+When you stop SymAgents with Ctrl+C (or any termination signal), it automatically cleans up all created symlinks before exiting. This works reliably whether running directly with `npx` or via `npm run` scripts.
+
 ### Debugging
 If you are running into issues or want to see exactly what the tool is doing, you can enable verbose logging:
 

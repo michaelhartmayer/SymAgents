@@ -140,7 +140,7 @@ describe('SIGINT Cleanup', () => {
         expect(symlinkPath2AfterExit).toBe(false);
 
         // Verify the cleanup was logged
-        expect(stdoutData).toContain('Stopping and cleaning up');
+        expect(stdoutData).toContain('Received SIGINT, cleaning up');
         expect(stdoutData).toContain('Removed AGENTS.md');
     }, 15000); // 15 second timeout for this integration test
 

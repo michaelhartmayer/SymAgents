@@ -25,34 +25,44 @@ const run = async () => {
     } else {
         await runner.watch();
 
-        // Flag to prevent duplicate cleanup execution
-        let cleanupInProgress = false;
+        // Keep event loop alive for proper signal handling under npm scripts
+        // This is critical - npm wraps scripts in a shell that may not forward signals
+        // properly unless the event loop is active
+        process.stdin.resume();
 
-        // Handle path cleanup on exit - MUST be synchronous to complete before process exit
-        const cleanup = () => {
-            // Check if cleanup is already in progress
-            if (cleanupInProgress) {
-                return;
-            }
-            cleanupInProgress = true;
+        // Guard to prevent double-cleanup if multiple signals arrive
+        let hasCleanedUp = false;
 
-            // De-register signal handlers to prevent duplicate calls
-            process.off('SIGINT', cleanup);
-            process.off('SIGTERM', cleanup);
-
-            Logger.info('\n[SymAgents] Stopping and cleaning up...');
+        // Synchronous cleanup function - must complete before process exits
+        const cleanupSync = () => {
+            if (hasCleanedUp) return;
+            hasCleanedUp = true;
             try {
-                // Use SYNCHRONOUS cleanup to ensure it completes before process exits
                 runner.removeSync();
-                Logger.success('[SymAgents] Done.');
             } catch (e) {
                 Logger.error('[SymAgents] Error during cleanup:', e);
             }
+        };
+
+        // Graceful shutdown handler for signals
+        const gracefulShutdown = (signal: string) => {
+            Logger.info(`\n[SymAgents] Received ${signal}, cleaning up...`);
+            cleanupSync();
+            Logger.success('[SymAgents] Done.');
             process.exit(0);
         };
 
-        process.on('SIGINT', cleanup);
-        process.on('SIGTERM', cleanup);
+        // Handle all common termination signals
+        process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+        process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+        process.on('SIGHUP', () => gracefulShutdown('SIGHUP'));
+
+        // Last resort backup - catches cases where:
+        // - npm/shell kills the process
+        // - Signal handler started but process.exit got interrupted
+        // - Any other abnormal termination
+        // The 'exit' event fires after signal handlers but before process terminates
+        process.on('exit', cleanupSync);
     }
 };
 

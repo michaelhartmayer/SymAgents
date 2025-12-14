@@ -1,6 +1,6 @@
 {
     "name": "@michaelhartmayer/sym-agents",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "description": "Library to automatically symlink AGENTS.md based on configuration",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
